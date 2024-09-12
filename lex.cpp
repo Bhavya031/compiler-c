@@ -1,6 +1,10 @@
-#include <iostream> // Use <iostream> for C++
+#include <algorithm>
+#include <cctype>
+#include <cstddef>
+#include <iostream>
 #include <optional>
 #include <ostream>
+#include <stdexcept>
 #include <string>
 
 enum class TokenType {
@@ -79,7 +83,7 @@ std::string tokenTypeToString(TokenType type) {
   case TokenType::ASTERISK:
     return "ASTERISK";
   case TokenType::SLASH:
-    return "/SLASH";
+    return "SLASH";
   case TokenType::EQEQ:
     return "EQEQ";
   case TokenType::NOTEQ:
@@ -102,9 +106,11 @@ private:
   TokenType tokenKind;
 
 public:
-  Token(std::string text, TokenType kind) : tokenText(text), tokenKind(kind) {}
-  Token() : tokenText("\0"), tokenKind(TokenType::EOF_) {}
-  std::string getTokenText() const { return tokenText; }
+  Token(const std::string &text, TokenType kind)
+      : tokenText(text), tokenKind(kind) {}
+  Token() : tokenText(""), tokenKind(TokenType::EOF_) {}
+
+  const std::string &getTokenText() const { return tokenText; }
   TokenType getTokenKind() const { return tokenKind; }
   std::optional<TokenType> checkIfKeyword(const std::string &tokenText) {
     static const TokenType allTokenTypes[] = {
@@ -168,34 +174,88 @@ public:
   Token getToken() {
     skipWhitespace();
     skipComment();
+    std::string tokenText(1, curChar);
     Token token;
     if (curChar == '+') {
-      token = Token(curChar, TokenType::PLUS);
+      token = Token(tokenText, TokenType::PLUS);
     } else if (curChar == '-') {
-      token = Token(curChar, TokenType::MINUS);
+      token = Token(tokenText, TokenType::MINUS);
     } else if (curChar == '*') {
-      token = Token(curChar, TokenType::ASTERISK);
+      token = Token(tokenText, TokenType::ASTERISK);
     } else if (curChar == '/') {
-      token = Token(curChar, TokenType::SLASH);
+      token = Token(tokenText, TokenType::SLASH);
     } else if (curChar == '\n') {
-      token = Token(curChar, TokenType::NEWLINE);
+      token = Token(tokenText, TokenType::NEWLINE);
     } else if (curChar == '\0') {
-      token = Token(curChar, TokenType::EOF_);
+      token = Token(tokenText, TokenType::EOF_);
     } else if (curChar == '=') {
       if (peek() == '=') {
-        char lastchar = curChar;
         nextChar();
-        token = Token(lastchar + curChar, TokenType::EQEQ);
+        token = Token(tokenText + curChar, TokenType::EQEQ);
+      }
+    } else if (curChar == '!') {
+      if (peek() == '=') {
+        nextChar();
+        tokenText += curChar;
+        token = Token(tokenText, TokenType::NOTEQ);
+      } else {
+        throw std::runtime_error("Expected !=, got !" + std::string(1, peek()));
+      }
+    } else if (curChar == '<') {
+      if (peek() == '=') {
+        nextChar();
+        tokenText += curChar;
+        token = Token(tokenText, TokenType::LTEQ);
+      } else {
+        token = Token(tokenText, TokenType::LT);
+      }
+    } else if (curChar == '>') {
+      if (peek() == '=') {
+        nextChar();
+        tokenText += curChar;
+        token = Token(tokenText, TokenType::GTEQ);
+      } else {
+        token = Token(tokenText, TokenType::GT);
+      }
+    } else if (isdigit(curChar)) {
+      int startPos = curPos;
+      while (isdigit(peek())) {
+        nextChar();
+        if (curChar == '.') {
+          nextChar();
+          if (!isdigit(curChar)) {
+            throw std::runtime_error("Illegal character in number.");
+          }
+        }
+        while (isdigit(peek())) {
+          nextChar();
+        }
+        tokenText = source.substr(startPos, curPos - startPos);
+        token = Token(tokenText, TokenType::NUMBER);
+      }
+    } else if (isalpha(curChar)) {
+      int startPos = curPos;
+      while (isalpha(peek())) {
+        nextChar();
+      }
+      tokenText = source.substr(startPos, curPos - startPos + 1);
+      Token tokenInstance;
+      std::optional<TokenType> keyword =
+          tokenInstance.checkIfKeyword(tokenText);
+      if (keyword == std::nullopt) {
+        token = Token(tokenText, TokenType::IDENT);
+      } else {
+        token = Token(tokenText, *keyword);
       }
     }
-
+    nextChar();
     return token;
   }
 };
 
 int main() {
   // The string to be tokenized
-  std::string input = "+==-";
+  std::string input = "IF ELSEIF";
 
   std::cout << "Tokenizing: \"" << input << "\"" << std::endl;
 
@@ -205,7 +265,7 @@ int main() {
   do {
     token = lexer.getToken();
     std::string tokenTypeStr = tokenTypeToString(token.getTokenKind());
-    std::cout << "Token: " << token.getTokenText() << ", Type: " << tokenTypeStr
+    std::cout << "Token: " << token.getTokenText() << " Type: " << tokenTypeStr
               << std::endl;
     lexer.nextChar();
   } while (token.getTokenKind() != TokenType::EOF_);

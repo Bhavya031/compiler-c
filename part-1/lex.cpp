@@ -1,4 +1,3 @@
-#include <algorithm>
 #include <cctype>
 #include <cstddef>
 #include <iostream>
@@ -6,8 +5,9 @@
 #include <ostream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
-enum class TokenType {
+enum TokenType {
 
   EOF_ = -1,
   NEWLINE = 0,
@@ -135,7 +135,6 @@ public:
 };
 
 class LEX {
-
 private:
   std::string source;
   char curChar;
@@ -144,7 +143,8 @@ private:
 public:
   LEX(const std::string &src) : source(src + '\n'), curChar('\0'), curPos(-1) {
     nextChar();
-  };
+  }
+
   void nextChar() {
     curPos++;
     if (curPos >= static_cast<int>(source.length())) {
@@ -153,29 +153,35 @@ public:
       curChar = source[curPos];
     }
   }
+
   char peek() {
     if (curPos + 1 >= static_cast<int>(source.length())) {
       return '\0';
     }
     return source[curPos + 1];
   }
+
   void skipWhitespace() {
     while (curChar == ' ' || curChar == '\t' || curChar == '\r') {
       nextChar();
     }
-  };
+  }
+
   void skipComment() {
     if (curChar == '#') {
-      while (curChar == '\n') {
+      while (curChar != '\n' && curChar != '\0') {
         nextChar();
-      };
+      }
     }
   }
+
   Token getToken() {
     skipWhitespace();
     skipComment();
-    std::string tokenText(1, curChar);
+
     Token token;
+    std::string tokenText(1, curChar);
+
     if (curChar == '+') {
       token = Token(tokenText, TokenType::PLUS);
     } else if (curChar == '-') {
@@ -187,88 +193,178 @@ public:
     } else if (curChar == '\n') {
       token = Token(tokenText, TokenType::NEWLINE);
     } else if (curChar == '\0') {
-      token = Token(tokenText, TokenType::EOF_);
+      token = Token("", TokenType::EOF_);
     } else if (curChar == '=') {
       if (peek() == '=') {
         nextChar();
-        token = Token(tokenText + curChar, TokenType::EQEQ);
+        token = Token("==", TokenType::EQEQ);
+      } else {
+        token = Token("=", TokenType::EQ);
       }
     } else if (curChar == '!') {
       if (peek() == '=') {
         nextChar();
-        tokenText += curChar;
-        token = Token(tokenText, TokenType::NOTEQ);
+        token = Token("!=", TokenType::NOTEQ);
       } else {
         throw std::runtime_error("Expected !=, got !" + std::string(1, peek()));
       }
     } else if (curChar == '<') {
       if (peek() == '=') {
         nextChar();
-        tokenText += curChar;
-        token = Token(tokenText, TokenType::LTEQ);
+        token = Token("<=", TokenType::LTEQ);
       } else {
-        token = Token(tokenText, TokenType::LT);
+        token = Token("<", TokenType::LT);
       }
     } else if (curChar == '>') {
       if (peek() == '=') {
         nextChar();
-        tokenText += curChar;
-        token = Token(tokenText, TokenType::GTEQ);
+        token = Token(">=", TokenType::GTEQ);
       } else {
-        token = Token(tokenText, TokenType::GT);
+        token = Token(">", TokenType::GT);
       }
     } else if (isdigit(curChar)) {
-      int startPos = curPos;
-      while (isdigit(peek())) {
-        nextChar();
-        if (curChar == '.') {
-          nextChar();
-          if (!isdigit(curChar)) {
-            throw std::runtime_error("Illegal character in number.");
-          }
-        }
-        while (isdigit(peek())) {
-          nextChar();
-        }
-        tokenText = source.substr(startPos, curPos - startPos);
-        token = Token(tokenText, TokenType::NUMBER);
-      }
+      return readNumber();
     } else if (isalpha(curChar)) {
-      int startPos = curPos;
-      while (isalpha(peek())) {
-        nextChar();
-      }
-      tokenText = source.substr(startPos, curPos - startPos + 1);
-      Token tokenInstance;
-      std::optional<TokenType> keyword =
-          tokenInstance.checkIfKeyword(tokenText);
-      if (keyword == std::nullopt) {
-        token = Token(tokenText, TokenType::IDENT);
-      } else {
-        token = Token(tokenText, *keyword);
-      }
+      return readIdentifier();
+    } else {
+      throw std::runtime_error("Unknown token: " + std::string(1, curChar));
     }
+
     nextChar();
     return token;
   }
+
+private:
+  Token readNumber() {
+    std::string tokenText;
+    while (isdigit(curChar) || curChar == '.') {
+      tokenText += curChar;
+      nextChar();
+    }
+    return Token(tokenText, TokenType::NUMBER);
+  }
+
+  Token readIdentifier() {
+    std::string tokenText;
+    while (isalnum(curChar)) {
+      tokenText += curChar;
+      nextChar();
+    }
+
+    Token tokenInstance;
+    std::optional<TokenType> keyword = tokenInstance.checkIfKeyword(tokenText);
+    if (keyword == std::nullopt) {
+      return Token(tokenText, TokenType::IDENT);
+    } else {
+      return Token(tokenText, *keyword);
+    }
+  }
 };
-
 int main() {
-  // The string to be tokenized
-  std::string input = "IF ELSEIF";
+    std::vector<std::string> testStrings = {
+        // Basic Assignments
+        "i=1",
+        "let x = 10",
+        "x=y",
+        "result = a + b - c",
 
-  std::cout << "Tokenizing: \"" << input << "\"" << std::endl;
+        // Arithmetic Operations
+        "x = (a + b) * c / d - e",
+        "let total = sum1 + sum2 + sum3",
+        "x = y * (z + w)",
+        "let area = 3.14 * radius * radius",
+        "x = x + 1",
 
-  LEX lexer(input);
-  Token token;
+        // Control Flow Statements
+        "if x == 10 then print x endif",
+        "while i < 10 repeat i = i + 1 endwhile",
+        "if x != y then print \"Not equal\" endif",
+        "if a <= b then print \"Less or equal\" endif",
+        "while count != 0 repeat count = count - 1 endwhile",
+        "if x > y then z = x else z = y endif",
 
-  do {
-    token = lexer.getToken();
-    std::string tokenTypeStr = tokenTypeToString(token.getTokenKind());
-    std::cout << "Token: " << token.getTokenText() << " Type: " << tokenTypeStr
-              << std::endl;
-    lexer.nextChar();
-  } while (token.getTokenKind() != TokenType::EOF_);
+        // Input and Output
+        "input name",
+        "print \"Hello, World!\"",
+        "print \"Value: \" + x",
+        "input \"Enter value:\", value",
 
-  return 0;
+        // Comments and Whitespace
+        "# This is a comment\nx = x + 1",
+        "   let x = 5   ",
+        "\n\nx = y\n\n",
+        "# Multiple comments\n# Another comment\nx = x - 1",
+
+        // Labels and Goto
+        "goto label1\nlabel1:",
+        "label start",
+        "goto end\nprint x\nend:",
+
+        // Strings with Special Characters
+        "x = \"String with spaces\"",
+        "x = \"String with a #hash symbol\"",
+        "x = \"String with a newline\\n in it\"",
+        "x = \"He said, \\\"Hello!\\\"\"",
+
+        // Numbers and Edge Cases
+        "let decimal = 123.456",
+        "let integer = 789",
+        "x = 0",
+        "x = .5",
+        "x = 5.",
+
+        // Invalid or Edge Inputs
+        "123abc",
+        "!@#$%^&*()",
+        "x = y >> 1",
+        "x = y << 1",
+        "x = y & z",
+        "x = y | z",
+        "x = y ^ z",
+        "x = ~y",
+        "/* Comment */ x = 1",
+        "x = 0x1A",
+        "x = 0755",
+        "x = 'Single quotes?'",
+        "x = \"Unclosed string",
+        "if (a == b) then print \"Equal\" endif",
+        "while (i < 10) repeat i = i + 1 endwhile",
+
+        // Empty and Whitespace Strings
+        "",
+        "   ",
+        "\n",
+        "\t\t",
+
+        // Combined Statements
+        "let x = 10\nif x > 5 then print x endif",
+        "while i <= 10 repeat\n  print i\n  i = i + 1\nendwhile",
+        "if x == y then\n  if y == z then\n    print \"All equal\"\n  endif\nendif",
+        "let str = \"Hello\" + \" \" + \"World!\"",
+
+        // Error Handling
+        "x = y / 0",
+        "unknown_token"
+    };
+
+    for (const auto& input : testStrings) {
+        std::cout << "Tokenizing: \"" << input << "\"\n";
+        LEX lexer(input);
+        Token token;
+
+        try {
+            do {
+                token = lexer.getToken();
+                std::string tokenTypeStr = tokenTypeToString(token.getTokenKind());
+                std::cout << "Token: \"" << token.getTokenText()
+                          << "\" Type: " << tokenTypeStr << std::endl;
+            } while (token.getTokenKind() != TokenType::EOF_);
+        } catch (const std::exception& e) {
+            std::cerr << "Error tokenizing input: " << e.what() << std::endl;
+        }
+
+        std::cout << "-----------------------------------\n";
+    }
+
+    return 0;
 }
